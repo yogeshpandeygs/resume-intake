@@ -68,9 +68,18 @@ export const cronSecret = optional('CRON_SECRET')
 export const appBaseUrl = optional('APP_BASE_URL') ?? 'http://localhost:3000'
 
 /** Addresses that appear in the DPDP notice and the duplicate-block message. */
-export const recruitmentEmail = optional('RECRUITMENT_EMAIL') ?? 'recruitment@organisation.com'
-export const dpoEmail = optional('DPO_EMAIL') ?? 'dpo@organisation.com'
-export const organisationName = optional('ORGANISATION_NAME') ?? '[Organisation]'
+export const recruitmentEmail = optional('RECRUITMENT_EMAIL') ?? 'recruitment@northwardbound.com'
+export const dpoEmail = optional('DPO_EMAIL') ?? 'dpo@northwardbound.com'
+
+/**
+ * The Data Fiduciary named in the DPDP notice and shown throughout the form.
+ *
+ * Defaulted rather than left as a placeholder so a deployment shows the right
+ * name without depending on an environment variable being set. `ORGANISATION_NAME`
+ * still overrides it, which is what a second deployment for a different entity
+ * would use.
+ */
+export const organisationName = optional('ORGANISATION_NAME') ?? 'Northwardbound'
 
 export const isProduction = process.env.NODE_ENV === 'production'
 
