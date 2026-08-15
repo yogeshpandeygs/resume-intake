@@ -19,7 +19,8 @@ import { drizzle } from 'drizzle-orm/pglite'
 import { assertPgliteAvailable } from '../lib/db/pglite-lock'
 import { institutions } from '../lib/db/schema'
 import { normaliseName } from '../lib/domain/fields'
-import { databaseUrl, pgliteDataDir } from '../lib/env'
+import { pgliteDataDir } from '../lib/env'
+import { resolveMigrationUrl, warnIfPooled } from './connection'
 
 const INSTITUTIONS = [
   // IITs
@@ -188,11 +189,17 @@ const INSTITUTIONS = [
 ] as const
 
 async function main() {
-  if (databaseUrl) {
+  const target = resolveMigrationUrl()
+
+  if (target) {
+    warnIfPooled(target)
     const { drizzle: drizzlePg } = await import('drizzle-orm/node-postgres')
-    const db = drizzlePg(databaseUrl)
+    const db = drizzlePg(target.url)
     await load(db as never)
-    console.log(`Seeded ${INSTITUTIONS.length} institutions into Postgres`)
+    // The URL is never printed — it carries the password.
+    console.log(
+      `Seeded ${INSTITUTIONS.length} institutions into Postgres (connection from ${target.source})`,
+    )
     process.exit(0)
   }
 

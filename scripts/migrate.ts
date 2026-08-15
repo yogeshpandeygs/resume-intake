@@ -9,15 +9,21 @@ import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { assertPgliteAvailable } from '../lib/db/pglite-lock'
-import { databaseUrl, pgliteDataDir } from '../lib/env'
+import { pgliteDataDir } from '../lib/env'
+import { resolveMigrationUrl, warnIfPooled } from './connection'
 
 async function main() {
-  if (databaseUrl) {
+  const target = resolveMigrationUrl()
+
+  if (target) {
+    warnIfPooled(target)
+
     const { drizzle: drizzlePg } = await import('drizzle-orm/node-postgres')
     const { migrate: migratePg } = await import('drizzle-orm/node-postgres/migrator')
-    const db = drizzlePg(databaseUrl)
+    const db = drizzlePg(target.url)
     await migratePg(db, { migrationsFolder: './drizzle' })
-    console.log('Migrations applied to Postgres at DATABASE_URL')
+    // Never print the URL itself — it carries the password.
+    console.log(`Migrations applied to Postgres (connection from ${target.source})`)
     process.exit(0)
   }
 
