@@ -80,6 +80,23 @@ interface UploadInfo {
   sizeKb: number
 }
 
+/** Shapes returned by the API routes. Every field optional: a crashed or
+ *  proxy-truncated response may carry none of them. */
+interface UploadResponseBody {
+  path?: string
+  filename?: string
+  sizeKb?: number
+  error?: string
+}
+
+interface ParseResponseBody {
+  parseMethod?: ParseMethod
+  prefill?: Record<string, unknown>
+  notice?: string
+  extractionNotes?: string
+  error?: string
+}
+
 export function ApplyForm({
   siteKey,
   refCode,
@@ -141,6 +158,34 @@ export function ApplyForm({
     })
   }
 
+  /**
+   * Read a JSON body without assuming there is one.
+   *
+   * A crashed or misconfigured server answers with an HTML error page, and a
+   * platform-level rejection (a body over the host's request limit) may send no
+   * body at all. Calling `.json()` on either throws, which previously surfaced as
+   * a generic "something went wrong" that said nothing about the real cause.
+   */
+  async function readJson<T extends object>(response: Response): Promise<T> {
+    const text = await response.text().catch(() => '')
+    try {
+      return text ? (JSON.parse(text) as T) : ({} as T)
+    } catch {
+      return {} as T
+    }
+  }
+
+  function describeFailure(response: Response, body: { error?: string }): string {
+    if (typeof body.error === 'string') return body.error
+    if (response.status === 413) {
+      return 'That file is too large to upload. Please use a file under 5 MB.'
+    }
+    if (response.status >= 500) {
+      return `The server could not accept the upload (error ${response.status}). This usually means the application is missing configuration. Please contact us if it continues.`
+    }
+    return `That file could not be uploaded (error ${response.status}).`
+  }
+
   async function handleFile(file: File) {
     setUploadError(undefined)
     setNotice(undefined)
@@ -150,10 +195,19 @@ export function ApplyForm({
       const body = new FormData()
       body.set('file', file)
       const uploadResponse = await fetch('/api/upload', { method: 'POST', body })
-      const uploadBody = await uploadResponse.json()
+      const uploadBody = await readJson<UploadResponseBody>(uploadResponse)
 
       if (!uploadResponse.ok) {
-        setUploadError(uploadBody.error ?? 'That file could not be uploaded.')
+        setUploadError(describeFailure(uploadResponse, uploadBody))
+        setUploadState('idle')
+        return
+      }
+
+      // A 200 that is missing these means something between us and the route
+      // rewrote the response. Treat it as a failure rather than carrying an
+      // undefined path into the submit step.
+      if (!uploadBody.path || !uploadBody.filename) {
+        setUploadError('The upload did not complete correctly. Please try again.')
         setUploadState('idle')
         return
       }
@@ -161,7 +215,7 @@ export function ApplyForm({
       setUpload({
         path: uploadBody.path,
         filename: uploadBody.filename,
-        sizeKb: uploadBody.sizeKb,
+        sizeKb: uploadBody.sizeKb ?? 0,
       })
       setUploadState('parsing')
 
@@ -170,18 +224,22 @@ export function ApplyForm({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ path: uploadBody.path }),
       })
-      const parseBody = await parseResponse.json()
+      const parseBody = await readJson<ParseResponseBody>(parseResponse)
 
       if (!parseResponse.ok) {
         // The file is stored and usable; only the automatic reading failed, so
         // the candidate continues with an empty form rather than starting over.
-        setUploadError(parseBody.error ?? 'We could not read that file.')
+        setUploadError(
+          typeof parseBody.error === 'string'
+            ? parseBody.error
+            : 'We could not read that file automatically. Please fill in the details below.',
+        )
         setParseMethod('manual')
         setUploadState('ready')
         return
       }
 
-      setParseMethod(parseBody.parseMethod)
+      setParseMethod(parseBody.parseMethod ?? 'manual')
       setNotice(parseBody.notice)
 
       // Merge rather than replace: anything already typed wins over the parse.

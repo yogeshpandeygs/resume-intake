@@ -73,3 +73,26 @@ export const dpoEmail = optional('DPO_EMAIL') ?? 'dpo@organisation.com'
 export const organisationName = optional('ORGANISATION_NAME') ?? '[Organisation]'
 
 export const isProduction = process.env.NODE_ENV === 'production'
+
+/**
+ * The local-first backends — embedded Postgres and disk storage — are for
+ * development only. On a serverless host the filesystem is read-only at runtime,
+ * and where it is writable it is discarded on every deploy.
+ *
+ * So a missing `DATABASE_URL` or `BLOB_READ_WRITE_TOKEN` in production is a
+ * misconfiguration, not a reason to fall back. Falling back would either crash
+ * with an unrelated-looking filesystem error or, worse, appear to work while
+ * quietly losing every candidate's application at the next deploy.
+ *
+ * This is checked when the backend is first used rather than at module load, so
+ * that `next build` — which also runs with NODE_ENV=production — is not broken by
+ * variables that only need to exist at runtime.
+ */
+export function missingProductionConfig(variable: string, purpose: string): Error {
+  return new Error(
+    `${variable} is not set. ${purpose}\n\n` +
+      'The local development fallback cannot be used in production: serverless filesystems are ' +
+      'read-only at runtime and are discarded on redeploy, so data written there would be lost.\n' +
+      `Set ${variable} in your hosting provider's environment variables and redeploy.`,
+  )
+}
