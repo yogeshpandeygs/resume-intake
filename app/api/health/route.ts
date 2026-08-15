@@ -1,0 +1,124 @@
+import {
+  adminPasswordIsSet,
+  anthropicApiKey,
+  blobToken,
+  cronSecret,
+  databaseUrl,
+  isProduction,
+  sessionSecretIsSet,
+  turnstileIsConfigured,
+} from '@/lib/env'
+
+/**
+ * Deployment readiness.
+ *
+ * `GET /api/health` reports which configuration the deployment is missing. It
+ * exists because a misconfigured deployment otherwise fails as an opaque 500 on
+ * the upload route, and the operator has no way to tell which variable is at
+ * fault without reading the host's runtime logs.
+ *
+ * Public, deliberately. It reports the *names* of unset variables and never a
+ * value, not even a redacted one. The names are already public — `.env.example`
+ * is in the repository — and that a deployment is misconfigured is already
+ * evident from the 500 it returns. So this discloses nothing an observer could
+ * not already determine, while making the fault self-diagnosing.
+ */
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+interface Requirement {
+  variable: string
+  present: boolean
+  /** What breaks without it. */
+  impact: string
+}
+
+export async function GET() {
+  /**
+   * The database and storage variables are required in production only. Locally
+   * their absence is the intended configuration — embedded Postgres and disk
+   * storage — so reporting a healthy dev machine as "not ready" would be wrong
+   * and would train people to ignore this endpoint.
+   */
+  const required: Requirement[] = [
+    ...(isProduction
+      ? [
+          {
+            variable: 'DATABASE_URL',
+            present: Boolean(databaseUrl),
+            impact: 'No database. Every page and route that touches data fails.',
+          },
+          {
+            variable: 'BLOB_READ_WRITE_TOKEN',
+            present: Boolean(blobToken),
+            impact: 'Uploaded resumes have nowhere durable to go. Upload returns 500.',
+          },
+        ]
+      : []),
+    {
+      variable: 'ADMIN_PASSWORD',
+      present: adminPasswordIsSet(),
+      impact: 'The hiring team cannot sign in.',
+    },
+    {
+      variable: 'SESSION_SECRET',
+      present: sessionSecretIsSet(),
+      impact: 'Admin sessions cannot be signed.',
+    },
+  ]
+
+  const recommended: Requirement[] = [
+    ...(isProduction
+      ? []
+      : [
+          {
+            variable: 'DATABASE_URL',
+            present: Boolean(databaseUrl),
+            impact: 'Not set locally, which is normal — embedded Postgres is in use.',
+          },
+          {
+            variable: 'BLOB_READ_WRITE_TOKEN',
+            present: Boolean(blobToken),
+            impact: 'Not set locally, which is normal — resumes are stored on disk.',
+          },
+        ]),
+    {
+      variable: 'TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY',
+      present: turnstileIsConfigured,
+      impact: 'Bot control runs on test keys that always pass.',
+    },
+    {
+      variable: 'CRON_SECRET',
+      present: Boolean(cronSecret),
+      impact: 'The daily retention sweep refuses to run in production.',
+    },
+    {
+      variable: 'ANTHROPIC_API_KEY',
+      present: Boolean(anthropicApiKey),
+      impact:
+        'Scanned resumes cannot be read. Text resumes still parse with the built-in reader.',
+    },
+  ]
+
+  const missingRequired = required.filter((r) => !r.present)
+
+  return Response.json(
+    {
+      ready: missingRequired.length === 0,
+      environment: isProduction ? 'production' : 'development',
+      missingRequired: missingRequired.map(({ variable, impact }) => ({ variable, impact })),
+      missingRecommended: recommended
+        .filter((r) => !r.present)
+        .map(({ variable, impact }) => ({ variable, impact })),
+      checked: [...required, ...recommended].map(({ variable, present }) => ({
+        variable,
+        present,
+      })),
+    },
+    {
+      status: missingRequired.length === 0 ? 200 : 503,
+      headers: { 'cache-control': 'no-store' },
+    },
+  )
+}

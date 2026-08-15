@@ -61,6 +61,23 @@ export function sessionSecret(): string {
   return required('SESSION_SECRET')
 }
 
+/*
+ * Presence checks for the health endpoint. These deliberately return a boolean
+ * and never the value, so that reporting what is missing cannot become a way to
+ * read what is set.
+ */
+export function adminPasswordIsSet(): boolean {
+  return optional('ADMIN_PASSWORD') !== undefined
+}
+
+export function sessionSecretIsSet(): boolean {
+  return optional('SESSION_SECRET') !== undefined
+}
+
+/** False when Turnstile is running on the always-passes development test keys. */
+export const turnstileIsConfigured =
+  optional('TURNSTILE_SITE_KEY') !== undefined && optional('TURNSTILE_SECRET_KEY') !== undefined
+
 /** Shared secret Vercel Cron presents when invoking the scheduled routes. */
 export const cronSecret = optional('CRON_SECRET')
 
