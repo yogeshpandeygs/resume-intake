@@ -9,6 +9,7 @@ import {
   sessionSecretIsSet,
   turnstileIsConfigured,
   turnstileIsHalfConfigured,
+  turnstileSiteKeyIsMalformed,
 } from '@/lib/env'
 
 /**
@@ -166,6 +167,14 @@ export async function GET(request: Request) {
             variable: 'BLOB_READ_WRITE_TOKEN',
             present: Boolean(blobToken),
             impact: 'Uploaded resumes have nowhere durable to go. Upload returns 500.',
+          },
+          {
+            variable: 'TURNSTILE_SITE_KEY (contains whitespace)',
+            present: !turnstileSiteKeyIsMalformed,
+            impact:
+              'Not a single key. The site key is rendered into the public page, so pasting ' +
+              'the secret key in alongside it publishes that secret — rotate it — and the ' +
+              'widget cannot load, so nobody can submit.',
           },
           {
             /*

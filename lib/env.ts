@@ -92,6 +92,18 @@ export const turnstileIsConfigured = turnstileSiteKeyIsSet && turnstileSecretKey
  */
 export const turnstileIsHalfConfigured = turnstileSiteKeyIsSet !== turnstileSecretKeyIsSet
 
+/**
+ * The site key contains whitespace, so it is not a single key.
+ *
+ * This is checked because it happened: both keys were pasted into
+ * `TURNSTILE_SITE_KEY` as two newline-separated lines. The site key is rendered
+ * into the page by design, so that published the *secret* key in the public HTML
+ * while also breaking the widget — and nothing reported either. A real key is a
+ * single unbroken token, so any whitespace means the value is wrong.
+ */
+export const turnstileSiteKeyIsMalformed =
+  turnstileSiteKeyIsSet && /\s/.test(optional('TURNSTILE_SITE_KEY') ?? '')
+
 /** Shared secret Vercel Cron presents when invoking the scheduled routes. */
 export const cronSecret = optional('CRON_SECRET')
 
