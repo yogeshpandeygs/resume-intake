@@ -123,6 +123,8 @@ export function ApplyForm({
   const [notice, setNotice] = useState<string | undefined>()
   const [consent, setConsent] = useState(false)
   const [turnstileToken, setTurnstileToken] = useState<string | undefined>()
+  /** Bumped to make the Turnstile widget replace a token that has been spent. */
+  const [turnstileNonce, setTurnstileNonce] = useState(0)
 
   /**
    * What the parse actually wrote into the form.
@@ -324,6 +326,21 @@ export function ApplyForm({
       return
     }
 
+    /*
+     * Without a token the server can only answer 403, and its message tells the
+     * candidate to refresh the page — which would lose everything they have
+     * typed. Saying plainly that the check has not finished is both accurate and
+     * recoverable: the widget is already working on a token.
+     */
+    if (!turnstileToken) {
+      setFormError(
+        'The verification check has not finished yet. Please wait a moment and try again — ' +
+          'your answers are safe.',
+      )
+      errorSummaryRef.current?.focus()
+      return
+    }
+
     setSubmitting(true)
     try {
       const response = await fetch('/api/submit', {
@@ -354,8 +371,15 @@ export function ApplyForm({
       if (!response.ok) {
         setFormError(body.error ?? 'Your application could not be submitted.')
         if (body.fieldErrors) setFieldErrors(body.fieldErrors)
-        // Turnstile tokens are single-use; force a fresh one for the retry.
+        /*
+         * Turnstile tokens are single-use, so the one just spent is dead whatever
+         * the failure was. Bumping the signal makes the widget issue a fresh one;
+         * clearing the token without that left the form permanently unable to
+         * submit, answering every retry with "we could not verify that you are
+         * human" no matter what the real error had been.
+         */
         setTurnstileToken(undefined)
+        setTurnstileNonce((n) => n + 1)
         errorSummaryRef.current?.focus()
         return
       }
@@ -823,7 +847,11 @@ export function ApplyForm({
           <p className="mt-2 text-xs font-medium text-red-700">{fieldErrors.consent}</p>
         )}
 
-        <Turnstile siteKey={siteKey} onToken={setTurnstileToken} />
+        <Turnstile
+          siteKey={siteKey}
+          onToken={setTurnstileToken}
+          resetSignal={turnstileNonce}
+        />
 
         <div
           ref={errorSummaryRef}

@@ -205,7 +205,9 @@ export async function GET(request: Request) {
     {
       variable: 'TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY',
       present: turnstileIsConfigured,
-      impact: 'Bot control runs on test keys that always pass.',
+      impact:
+        'Bot control runs on test keys that always pass, and every candidate sees a ' +
+        '"For testing only — if seen, report to site owner" banner on the form.',
     },
     {
       variable: 'CRON_SECRET',

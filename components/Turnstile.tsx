@@ -24,6 +24,7 @@ declare global {
         },
       ) => string
       remove: (widgetId: string) => void
+      reset: (widgetId: string) => void
     }
   }
 }
@@ -53,11 +54,24 @@ function loadScript(): Promise<void> {
 export function Turnstile({
   siteKey,
   onToken,
+  resetSignal = 0,
 }: {
   siteKey: string
   onToken: (token: string | undefined) => void
+  /**
+   * Increment to make the widget issue a fresh token.
+   *
+   * Turnstile tokens are single-use, so the form discards its token after every
+   * submit attempt. Without this the widget was never told, so it sat there
+   * displaying "Success!" while holding a token it had already spent, and every
+   * retry submitted nothing. The server then answered "we could not verify that
+   * you are human" whatever the original error had been, and the only way out
+   * was reloading the page and re-entering the whole form.
+   */
+  resetSignal?: number
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const widgetIdRef = useRef<string | undefined>(undefined)
 
   // Held in a ref so the widget is not torn down and rebuilt every time the
   // parent re-renders with a new callback identity. Assigned in an effect rather
@@ -74,7 +88,7 @@ export function Turnstile({
     loadScript()
       .then(() => {
         if (cancelled || !containerRef.current || !window.turnstile) return
-        widgetId = window.turnstile.render(containerRef.current, {
+        widgetId = widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme: 'light',
           callback: (token) => onTokenRef.current(token),
@@ -88,8 +102,23 @@ export function Turnstile({
     return () => {
       cancelled = true
       if (widgetId && window.turnstile) window.turnstile.remove(widgetId)
+      widgetIdRef.current = undefined
     }
   }, [siteKey])
+
+  // Skipped on mount: the widget has only just rendered and is already issuing
+  // its first token, so resetting here would throw that token away.
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
+    const widgetId = widgetIdRef.current
+    if (!widgetId || !window.turnstile) return
+    onTokenRef.current(undefined)
+    window.turnstile.reset(widgetId)
+  }, [resetSignal])
 
   return <div ref={containerRef} className="mt-2" />
 }
