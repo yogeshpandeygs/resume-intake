@@ -81,8 +81,29 @@ export const turnstileIsConfigured =
 /** Shared secret Vercel Cron presents when invoking the scheduled routes. */
 export const cronSecret = optional('CRON_SECRET')
 
-/** Absolute base URL, used to build withdrawal and share links. */
-export const appBaseUrl = optional('APP_BASE_URL') ?? 'http://localhost:3000'
+/**
+ * Absolute base URL, used to build withdrawal and share links.
+ *
+ * The localhost default is for development only, and reaching it in production is
+ * a quiet disaster rather than a visible one: the deployment keeps working while
+ * every withdrawal link it emails points at the candidate's own machine. A
+ * candidate who cannot action their withdrawal link cannot exercise a right the
+ * DPDP notice promises them.
+ *
+ * So on Vercel we fall back to the platform's own stable production domain before
+ * localhost. Note this is `VERCEL_PROJECT_PRODUCTION_URL`, not `VERCEL_URL` —
+ * the latter is unique per deployment and would rot within the day, while these
+ * links have to survive the 36-month retention window. `APP_BASE_URL` still wins,
+ * which is what a custom domain sets.
+ */
+const vercelProductionUrl = optional('VERCEL_PROJECT_PRODUCTION_URL')
+
+export const appBaseUrl =
+  optional('APP_BASE_URL') ??
+  (vercelProductionUrl ? `https://${vercelProductionUrl}` : 'http://localhost:3000')
+
+/** True when the base URL is the development default — useless in a deployed app. */
+export const appBaseUrlIsLocalhost = appBaseUrl.includes('localhost')
 
 /** Addresses that appear in the DPDP notice and the duplicate-block message. */
 export const recruitmentEmail = optional('RECRUITMENT_EMAIL') ?? 'recruitment@northwardbound.com'

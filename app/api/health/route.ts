@@ -1,6 +1,7 @@
 import {
   adminPasswordIsSet,
   anthropicApiKey,
+  appBaseUrlIsLocalhost,
   blobToken,
   cronSecret,
   databaseUrl,
@@ -164,6 +165,13 @@ export async function GET(request: Request) {
             variable: 'BLOB_READ_WRITE_TOKEN',
             present: Boolean(blobToken),
             impact: 'Uploaded resumes have nowhere durable to go. Upload returns 500.',
+          },
+          {
+            variable: 'APP_BASE_URL',
+            present: !appBaseUrlIsLocalhost,
+            impact:
+              'Withdrawal and share links point at localhost, so candidates cannot action ' +
+              'the withdrawal right the consent notice promises them.',
           },
         ]
       : []),
