@@ -34,7 +34,62 @@ interface Requirement {
   impact: string
 }
 
-export async function GET() {
+interface Probe {
+  name: string
+  ok: boolean
+  /** Error class only. Never the message — those can carry hostnames and paths. */
+  error?: string
+}
+
+/**
+ * Live connectivity checks, run only for `?probe=1`.
+ *
+ * A variable being *set* is not the same as it being *right*: a token for a store
+ * that was deleted, or a database URL whose tables were never created, both look
+ * healthy to the presence checks above while every write fails. That gap cost real
+ * debugging time, so these actually call the services.
+ *
+ * Only the error's class name is reported. `BlobStoreNotFoundError` is enough to
+ * act on, whereas the message can quote hostnames and request URLs, and this
+ * endpoint is public.
+ */
+async function runProbes(): Promise<Probe[]> {
+  const probes: Probe[] = []
+
+  probes.push(
+    await probe('database', async () => {
+      const { db } = await import('@/lib/db')
+      const { institutions } = await import('@/lib/db/schema')
+      await db.select().from(institutions).limit(1)
+    }),
+  )
+
+  if (blobToken) {
+    probes.push(
+      await probe('blob', async () => {
+        const { list } = await import('@vercel/blob')
+        await list({ token: blobToken, limit: 1 })
+      }),
+    )
+  }
+
+  return probes
+}
+
+async function probe(name: string, run: () => Promise<unknown>): Promise<Probe> {
+  try {
+    await run()
+    return { name, ok: true }
+  } catch (error) {
+    return {
+      name,
+      ok: false,
+      error: error instanceof Error ? error.constructor.name : 'UnknownError',
+    }
+  }
+}
+
+export async function GET(request: Request) {
   /**
    * The database and storage variables are required in production only. Locally
    * their absence is the intended configuration — embedded Postgres and disk
@@ -103,10 +158,14 @@ export async function GET() {
 
   const missingRequired = required.filter((r) => !r.present)
 
+  const probes = new URL(request.url).searchParams.get('probe') ? await runProbes() : undefined
+  const probeFailed = probes?.some((p) => !p.ok) ?? false
+
   return Response.json(
     {
-      ready: missingRequired.length === 0,
+      ready: missingRequired.length === 0 && !probeFailed,
       environment: isProduction ? 'production' : 'development',
+      ...(probes ? { probes } : {}),
       missingRequired: missingRequired.map(({ variable, impact }) => ({ variable, impact })),
       missingRecommended: recommended
         .filter((r) => !r.present)
@@ -117,7 +176,7 @@ export async function GET() {
       })),
     },
     {
-      status: missingRequired.length === 0 ? 200 : 503,
+      status: missingRequired.length === 0 && !probeFailed ? 200 : 503,
       headers: { 'cache-control': 'no-store' },
     },
   )

@@ -72,15 +72,37 @@ export async function POST(request: Request) {
   const key = generateStorageKey(format)
   const sizeKb = Math.max(1, Math.ceil(file.size / 1024))
 
-  const { path } = await storage.put(key, data, CONTENT_TYPES[format])
+  let path: string
+  try {
+    ;({ path } = await storage.put(key, data, CONTENT_TYPES[format]))
 
-  // Recorded so the daily sweep can find and delete files whose application was
-  // never submitted.
-  await db.insert(uploads).values({
-    path,
-    filename: file.name,
-    sizeKb,
-  })
+    // Recorded so the daily sweep can find and delete files whose application was
+    // never submitted.
+    await db.insert(uploads).values({
+      path,
+      filename: file.name,
+      sizeKb,
+    })
+  } catch (error) {
+    /*
+     * Storage or the database is misconfigured or unreachable. Letting this throw
+     * produced a 500 with an empty body, which told the candidate nothing and told
+     * the operator nothing either — the deployment looked broken with no clue why.
+     *
+     * The cause is logged for the operator and deliberately not returned: it names
+     * internal infrastructure, and the candidate can do nothing with it. Their file
+     * was fine, so the message says so and does not invite them to re-edit it.
+     */
+    console.error('[upload] could not store the resume:', error)
+    return Response.json(
+      {
+        error:
+          'Your file was fine, but we could not save it just now. This is a problem on our ' +
+          'side. Please try again in a few minutes.',
+      },
+      { status: 502 },
+    )
+  }
 
   return Response.json({
     path,
