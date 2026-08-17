@@ -88,6 +88,13 @@ Changing any of these without understanding why will reintroduce a real bug.
 - **`CONSENT_NOTICE_VERSION`** in `lib/domain/constants.ts` is stamped on every
   submission. Bump it whenever `components/ConsentNotice.tsx` wording changes, or
   you lose the ability to prove what a candidate agreed to.
+- **Blobs are private, not public** (`lib/storage/blob.ts`, `access: 'private'`).
+  A public blob is readable forever by anyone holding its URL, with no
+  authentication — for candidate CVs that is a standing personal-data leak, and
+  one URL in a log line or referrer header is enough. Reads go through the SDK's
+  `get()` with the store token, which also scopes them to our own store, so a
+  tampered `resume_blob_path` cannot turn the admin download route into a general
+  fetcher. Switching back to `'public'` fails outright against a private store.
 - **`ConsentNotice` must stay a server component.** It reads organisation and DPO
   names from env, absent in the browser bundle. It is passed into the client
   `ApplyForm` as a `consentNotice` slot; rendering it inside the client component
@@ -122,6 +129,14 @@ still stored. `parse_method` records which route ran.
 - **`<body>` carries `suppressHydrationWarning`** for extension-injected
   attributes. It applies one level deep, so genuine mismatches inside the app
   still surface — don't widen it.
+- **CLI scripts load `.env.local` via `scripts/env.ts`**, not `dotenv/config`.
+  Next reads `.env.local` natively; plain Node does not, and `dotenv/config` reads
+  `.env` only. Without this, `db:migrate` silently targeted the embedded database
+  and printed success while the real one stayed empty.
+- **`GET /api/health` diagnoses a deployment**; `?probe=1` runs live database and
+  blob checks, `?probe=write` round-trips an object **through the storage adapter**.
+  Probing the SDK directly instead is what let a passing read probe coexist with
+  every upload failing.
 - **Migrations use Neon's direct connection**, not the pooled one
   (`scripts/connection.ts`): DDL depends on session state that PgBouncer's
   transaction pooling does not preserve. Resolution order is
