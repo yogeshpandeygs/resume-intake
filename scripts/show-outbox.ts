@@ -12,7 +12,7 @@
  * so the hiring team cannot delete anything; putting these tokens on an admin
  * page would hand back the capability the scope is meant to withhold.
  */
-import 'dotenv/config'
+import './env'
 import { desc } from 'drizzle-orm'
 import { assertPgliteAvailable } from '../lib/db/pglite-lock'
 import { outbox } from '../lib/db/schema'

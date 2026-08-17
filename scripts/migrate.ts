@@ -4,7 +4,7 @@
  *
  *   npm run db:migrate
  */
-import 'dotenv/config'
+import './env'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'

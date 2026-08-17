@@ -13,7 +13,7 @@
  * always type it. Suggestions exist to keep spellings consistent enough for the
  * admin's institution filter to be useful.
  */
-import 'dotenv/config'
+import './env'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import { assertPgliteAvailable } from '../lib/db/pglite-lock'
