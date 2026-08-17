@@ -8,6 +8,7 @@ import {
   isProduction,
   sessionSecretIsSet,
   turnstileIsConfigured,
+  turnstileIsHalfConfigured,
 } from '@/lib/env'
 
 /**
@@ -165,6 +166,19 @@ export async function GET(request: Request) {
             variable: 'BLOB_READ_WRITE_TOKEN',
             present: Boolean(blobToken),
             impact: 'Uploaded resumes have nowhere durable to go. Upload returns 500.',
+          },
+          {
+            /*
+             * Required, unlike the all-or-nothing Turnstile case below, because a
+             * half-configured pair actively misleads: the form displays a genuine
+             * challenge while the server accepts any token at all.
+             */
+            variable: 'TURNSTILE_SITE_KEY + TURNSTILE_SECRET_KEY (only one is set)',
+            present: !turnstileIsHalfConfigured,
+            impact:
+              'The form shows a real challenge but verifies against the always-pass test ' +
+              'secret, so any token is accepted and bot control is off while appearing on. ' +
+              'Set both keys, or neither.',
           },
           {
             variable: 'APP_BASE_URL',

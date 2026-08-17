@@ -74,9 +74,23 @@ export function sessionSecretIsSet(): boolean {
   return optional('SESSION_SECRET') !== undefined
 }
 
+const turnstileSiteKeyIsSet = optional('TURNSTILE_SITE_KEY') !== undefined
+const turnstileSecretKeyIsSet = optional('TURNSTILE_SECRET_KEY') !== undefined
+
 /** False when Turnstile is running on the always-passes development test keys. */
-export const turnstileIsConfigured =
-  optional('TURNSTILE_SITE_KEY') !== undefined && optional('TURNSTILE_SECRET_KEY') !== undefined
+export const turnstileIsConfigured = turnstileSiteKeyIsSet && turnstileSecretKeyIsSet
+
+/**
+ * Exactly one of the pair is set — the most dangerous of the three states.
+ *
+ * With a real site key and no secret, the widget renders a genuine challenge with
+ * no "for testing only" banner, while the server verifies against the always-pass
+ * test secret, which accepts *any* token including a fabricated one. The form
+ * therefore looks protected, reports success, and screens nothing. Neither
+ * all-test nor all-real keys can mislead you this way, which is why this is
+ * called out separately rather than folded into `turnstileIsConfigured`.
+ */
+export const turnstileIsHalfConfigured = turnstileSiteKeyIsSet !== turnstileSecretKeyIsSet
 
 /** Shared secret Vercel Cron presents when invoking the scheduled routes. */
 export const cronSecret = optional('CRON_SECRET')
