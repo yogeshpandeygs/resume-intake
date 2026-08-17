@@ -53,7 +53,7 @@ interface Probe {
  * act on, whereas the message can quote hostnames and request URLs, and this
  * endpoint is public.
  */
-async function runProbes(): Promise<Probe[]> {
+async function runProbes(writable: boolean): Promise<Probe[]> {
   const probes: Probe[] = []
 
   probes.push(
@@ -66,11 +66,37 @@ async function runProbes(): Promise<Probe[]> {
 
   if (blobToken) {
     probes.push(
-      await probe('blob', async () => {
+      await probe('blob-read', async () => {
         const { list } = await import('@vercel/blob')
         await list({ token: blobToken, limit: 1 })
       }),
     )
+
+    /*
+     * Reading proves the token and store exist; it does not prove the app can
+     * write, which is the operation that actually failed in production. So this
+     * repeats the upload route's own `put` — same options, same access mode — and
+     * removes the object again.
+     *
+     * Behind an explicit `probe=write` because it is a public endpoint and this is
+     * the one check with a side effect. The object is a few bytes and is deleted
+     * in the same request.
+     */
+    if (writable) {
+      probes.push(
+        await probe('blob-write', async () => {
+          const { del, put } = await import('@vercel/blob')
+          const key = `health/probe-${crypto.randomUUID()}.txt`
+          const { url } = await put(key, new Uint8Array([104, 105]), {
+            access: 'public',
+            contentType: 'text/plain',
+            token: blobToken,
+            addRandomSuffix: false,
+          })
+          await del(url, { token: blobToken })
+        }),
+      )
+    }
   }
 
   return probes
@@ -158,7 +184,8 @@ export async function GET(request: Request) {
 
   const missingRequired = required.filter((r) => !r.present)
 
-  const probes = new URL(request.url).searchParams.get('probe') ? await runProbes() : undefined
+  const mode = new URL(request.url).searchParams.get('probe')
+  const probes = mode ? await runProbes(mode === 'write') : undefined
   const probeFailed = probes?.some((p) => !p.ok) ?? false
 
   return Response.json(
