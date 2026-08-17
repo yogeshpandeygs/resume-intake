@@ -12,7 +12,11 @@ import { assertSafeStorageKey, type ResumeStorage } from './types'
 export const blobStorage: ResumeStorage = {
   async put(key, data, contentType) {
     assertSafeStorageKey(key)
-    const result = await put(key, data as unknown as Blob | ArrayBuffer, {
+    // `Buffer`, not the `Uint8Array` we are handed: the SDK's `PutBody` accepts
+    // the former and not the latter. This used to be an `as unknown as` cast,
+    // which compiled by lying about the type and would have hidden a genuine
+    // mismatch if the SDK ever tightened what it accepts at runtime.
+    const result = await put(key, Buffer.from(data), {
       access: 'public',
       contentType,
       token: blobToken,

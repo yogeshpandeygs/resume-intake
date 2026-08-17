@@ -87,7 +87,7 @@ async function runProbes(writable: boolean): Promise<Probe[]> {
         await probe('blob-write', async () => {
           const { del, put } = await import('@vercel/blob')
           const key = `health/probe-${crypto.randomUUID()}.txt`
-          const { url } = await put(key, new Uint8Array([104, 105]), {
+          const { url } = await put(key, Buffer.from('hi'), {
             access: 'public',
             contentType: 'text/plain',
             token: blobToken,
