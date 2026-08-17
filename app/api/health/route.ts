@@ -106,15 +106,23 @@ async function runProbes(writable: boolean): Promise<Probe[]> {
     if (writable) {
       probes.push(
         await probe('blob-write', async () => {
-          const { del, put } = await import('@vercel/blob')
+          // Deliberately routed through the app's own adapter rather than the SDK
+          // directly, so the probe cannot pass while the code paths that uploads
+          // and downloads actually use are broken — which is how the public/private
+          // mismatch survived a passing read probe.
+          const { storage } = await import('@/lib/storage')
           const key = `health/probe-${crypto.randomUUID()}.txt`
-          const { url } = await put(key, Buffer.from('hi'), {
-            access: 'public',
-            contentType: 'text/plain',
-            token: blobToken,
-            addRandomSuffix: false,
-          })
-          await del(url, { token: blobToken })
+          const payload = new TextEncoder().encode('hi')
+
+          const { path } = await storage.put(key, payload, 'text/plain')
+          try {
+            const read = await storage.get(path)
+            if (read.length !== payload.length) {
+              throw new Error(`read back ${read.length} bytes, expected ${payload.length}`)
+            }
+          } finally {
+            await storage.delete(path)
+          }
         }),
       )
     }
