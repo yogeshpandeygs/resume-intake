@@ -37,8 +37,29 @@ interface Requirement {
 interface Probe {
   name: string
   ok: boolean
-  /** Error class only. Never the message — those can carry hostnames and paths. */
+  /** Error class name. Minified in a production bundle, so often not meaningful alone. */
   error?: string
+  /** The SDK's own message, when it is one that is safe to publish. See `safeDetail`. */
+  detail?: string
+}
+
+/**
+ * Whether an error message can be shown on this public endpoint.
+ *
+ * Vercel Blob and Postgres both prefix their user-facing errors, and those are
+ * curated prose — "This store does not exist", "Access denied" — with no
+ * credentials in them. Anything else is withheld, because a raw driver error can
+ * quote hostnames, ports and query text.
+ *
+ * This is needed because class names are minified in a production bundle: the
+ * blob write failure reported itself as `y`, which is unactionable.
+ */
+function safeDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined
+  const message = error.message
+  return /^(Vercel Blob|error:|password authentication|connection|timeout)/i.test(message)
+    ? message.slice(0, 200)
+    : undefined
 }
 
 /**
@@ -111,6 +132,7 @@ async function probe(name: string, run: () => Promise<unknown>): Promise<Probe> 
       name,
       ok: false,
       error: error instanceof Error ? error.constructor.name : 'UnknownError',
+      detail: safeDetail(error),
     }
   }
 }
